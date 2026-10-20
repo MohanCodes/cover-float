@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
+#include <stdexcept>
 #include <utility>
 
 #ifndef TEST_FMA
@@ -53,6 +54,30 @@ void softFloat_clearFlags(uint_fast8_t clearMask) {
 
 uint_fast8_t softFloat_getFlags() {
     return softfloat_exceptionFlags;
+}
+
+uint_fast8_t translate_rounding_mode_to_softfloat(uint_fast8_t rm) {
+    // Convert from the cover-float rm format to the softfloat-specific format
+    // The softfloat numbers are based on the numbers in softfloat 3d. Softfloat
+    // 3e changed round odd to be 6, hence why this function exists.
+    switch (rm) {
+    case 0:
+        return softfloat_round_near_even;
+    case 1:
+        return softfloat_round_minMag;
+    case 2:
+        return softfloat_round_min;
+    case 3:
+        return softfloat_round_max;
+    case 4:
+        return softfloat_round_near_maxMag;
+    case 5:
+        return softfloat_round_odd;
+    default:
+        std::stringstream ss;
+        ss << "Invalid rounding mode (" << (uint16_t)rm << ") for coverfloat. Expected a number between 0 and 5";
+        throw std::invalid_argument(ss.str());
+    }
 }
 
 void softFloat_setRoundingMode(uint_fast8_t rm) {
@@ -220,7 +245,7 @@ uint128_t parse_hex_128(const char *hex) {
 
 std::pair<int, std::string> reference_model(
     const uint32_t op,
-    const uint8_t rm,
+    const uint8_t coverfloat_rm,
     const mp::uint128_t &a,
     const mp::uint128_t &b,
     const mp::uint128_t &c,
@@ -239,7 +264,8 @@ std::pair<int, std::string> reference_model(
     softfloat_clearIntermResults();
 
     // set rounding mode
-    softFloat_setRoundingMode(rm);
+    uint_fast8_t softfloat_rm = translate_rounding_mode_to_softfloat(coverfloat_rm);
+    softFloat_setRoundingMode(softfloat_rm);
 
     // nested switch statements to call softfloat functions
 
@@ -674,7 +700,7 @@ std::pair<int, std::string> reference_model(
             // Round odd acts like a sticky bit
             softFloat_setRoundingMode(softfloat_round_odd);
             float32_t f32_remainder = f32_rem(f32A, f32B);
-            softFloat_setRoundingMode(rm);
+            softFloat_setRoundingMode(softfloat_rm);
 
             resultf = f32_to_bf16(f32_remainder);
 
@@ -1179,7 +1205,7 @@ std::pair<int, std::string> reference_model(
 
                 softFloat_setRoundingMode(softfloat_round_odd);
                 float64_t out_64 = i64_to_f64(input);
-                softFloat_setRoundingMode(rm);
+                softFloat_setRoundingMode(softfloat_rm);
                 out = f64_to_bf16(out_64);
 
                 break;
@@ -1189,7 +1215,7 @@ std::pair<int, std::string> reference_model(
 
                 softFloat_setRoundingMode(softfloat_round_odd);
                 float64_t out_64 = ui64_to_f64(input);
-                softFloat_setRoundingMode(rm);
+                softFloat_setRoundingMode(softfloat_rm);
                 out = f64_to_bf16(out_64);
 
                 break;
@@ -1345,19 +1371,19 @@ std::pair<int, std::string> reference_model(
             MP_TO_FLOAT32(af, a);
             switch (resultFmt) {
             case FMT_INT: {
-                result = signed_to_unsigned(f32_to_i32(af, rm, true));
+                result = signed_to_unsigned(f32_to_i32(af, softfloat_rm, true));
                 break;
             }
             case FMT_UINT: {
-                result = f32_to_ui32(af, rm, true);
+                result = f32_to_ui32(af, softfloat_rm, true);
                 break;
             }
             case FMT_LONG: {
-                result = signed_to_unsigned(f32_to_i64(af, rm, true));
+                result = signed_to_unsigned(f32_to_i64(af, softfloat_rm, true));
                 break;
             }
             case FMT_ULONG: {
-                result = f32_to_ui64(af, rm, true);
+                result = f32_to_ui64(af, softfloat_rm, true);
                 break;
             }
             default: {
@@ -1373,19 +1399,19 @@ std::pair<int, std::string> reference_model(
             MP_TO_FLOAT64(af, a);
             switch (resultFmt) {
             case FMT_INT: {
-                result = signed_to_unsigned(f64_to_i32(af, rm, true));
+                result = signed_to_unsigned(f64_to_i32(af, softfloat_rm, true));
                 break;
             }
             case FMT_UINT: {
-                result = f64_to_ui32(af, rm, true);
+                result = f64_to_ui32(af, softfloat_rm, true);
                 break;
             }
             case FMT_LONG: {
-                result = signed_to_unsigned(f64_to_i64(af, rm, true));
+                result = signed_to_unsigned(f64_to_i64(af, softfloat_rm, true));
                 break;
             }
             case FMT_ULONG: {
-                result = f64_to_ui64(af, rm, true);
+                result = f64_to_ui64(af, softfloat_rm, true);
                 break;
             }
             default: {
@@ -1401,19 +1427,19 @@ std::pair<int, std::string> reference_model(
             MP_TO_FLOAT128(af, a);
             switch (resultFmt) {
             case FMT_INT: {
-                result = signed_to_unsigned(f128_to_i32(af, rm, true));
+                result = signed_to_unsigned(f128_to_i32(af, softfloat_rm, true));
                 break;
             }
             case FMT_UINT: {
-                result = f128_to_ui32(af, rm, true);
+                result = f128_to_ui32(af, softfloat_rm, true);
                 break;
             }
             case FMT_LONG: {
-                result = signed_to_unsigned(f128_to_i64(af, rm, true));
+                result = signed_to_unsigned(f128_to_i64(af, softfloat_rm, true));
                 break;
             }
             case FMT_ULONG: {
-                result = f128_to_ui64(af, rm, true);
+                result = f128_to_ui64(af, softfloat_rm, true);
                 break;
             }
             default: {
@@ -1429,19 +1455,19 @@ std::pair<int, std::string> reference_model(
             MP_TO_FLOAT16(af, a);
             switch (resultFmt) {
             case FMT_INT: {
-                result = signed_to_unsigned(f16_to_i32(af, rm, true));
+                result = signed_to_unsigned(f16_to_i32(af, softfloat_rm, true));
                 break;
             }
             case FMT_UINT: {
-                result = f16_to_ui32(af, rm, true);
+                result = f16_to_ui32(af, softfloat_rm, true);
                 break;
             }
             case FMT_LONG: {
-                result = signed_to_unsigned(f16_to_i64(af, rm, true));
+                result = signed_to_unsigned(f16_to_i64(af, softfloat_rm, true));
                 break;
             }
             case FMT_ULONG: {
-                result = f16_to_ui64(af, rm, true);
+                result = f16_to_ui64(af, softfloat_rm, true);
                 break;
             }
             default: {
@@ -1457,19 +1483,19 @@ std::pair<int, std::string> reference_model(
             MP_TO_FLOAT16(af, a);
             switch (resultFmt) {
             case FMT_INT: {
-                result = signed_to_unsigned(bf16_to_i32(af, rm, true));
+                result = signed_to_unsigned(bf16_to_i32(af, softfloat_rm, true));
                 break;
             }
             case FMT_UINT: {
-                result = bf16_to_ui32(af, rm, true);
+                result = bf16_to_ui32(af, softfloat_rm, true);
                 break;
             }
             case FMT_LONG: {
-                result = signed_to_unsigned(f32_to_i64(bf16_to_f32(af), rm, true));
+                result = signed_to_unsigned(f32_to_i64(bf16_to_f32(af), softfloat_rm, true));
                 break;
             }
             case FMT_ULONG: {
-                result = f32_to_ui64(bf16_to_f32(af), rm, true);
+                result = f32_to_ui64(bf16_to_f32(af), softfloat_rm, true);
                 break;
             }
             default: {
@@ -1581,7 +1607,7 @@ std::pair<int, std::string> reference_model(
                 float32_t af_32 = f128_to_f32(af);
                 // Save them for later
                 intermResult_t temp_interm_results = softfloat_intermediateResult;
-                softFloat_setRoundingMode(rm);
+                softFloat_setRoundingMode(softfloat_rm);
 
                 bfloat16_t resultf = f32_to_bf16(af_32);
                 softfloat_intermediateResult = temp_interm_results;
@@ -2051,7 +2077,7 @@ std::pair<int, std::string> reference_model(
             MP_TO_FLOAT16(af, a);
 
             float32_t as_f32 = bf16_to_f32(af);
-            float32_t rounded_to_int_f32 = f32_roundToInt(as_f32, rm, true);
+            float32_t rounded_to_int_f32 = f32_roundToInt(as_f32, softfloat_rm, true);
             resultf = f32_to_bf16(rounded_to_int_f32);
 
             sig = fracBF16UI(a);
@@ -2069,7 +2095,7 @@ std::pair<int, std::string> reference_model(
         case FMT_HALF: {
             float16_t af, resultf;
             MP_TO_FLOAT16(af, a);
-            resultf = f16_roundToInt(af, rm, true);
+            resultf = f16_roundToInt(af, softfloat_rm, true);
             FLOAT16_TO_MP(result, resultf);
 
             sig = fracF16UI(a);
@@ -2086,7 +2112,7 @@ std::pair<int, std::string> reference_model(
         case FMT_SINGLE: {
             float32_t af, resultf;
             MP_TO_FLOAT32(af, a);
-            resultf = f32_roundToInt(af, rm, true);
+            resultf = f32_roundToInt(af, softfloat_rm, true);
             FLOAT32_TO_MP(result, resultf);
 
             sig = fracF32UI(a);
@@ -2103,7 +2129,7 @@ std::pair<int, std::string> reference_model(
         case FMT_DOUBLE: {
             float64_t af, resultf;
             MP_TO_FLOAT64(af, a);
-            resultf = f64_roundToInt(af, rm, true);
+            resultf = f64_roundToInt(af, softfloat_rm, true);
             FLOAT64_TO_MP(result, resultf);
 
             sig = fracF64UI(a);
@@ -2120,7 +2146,7 @@ std::pair<int, std::string> reference_model(
         case FMT_QUAD: {
             float128_t af, resultf;
             MP_TO_FLOAT128(af, a);
-            resultf = f128_roundToInt(af, rm, true);
+            resultf = f128_roundToInt(af, softfloat_rm, true);
             FLOAT128_TO_MP(result, resultf);
 
             sig = mp::cpp_int(fracF128UI64(static_cast<uint64_t>(a >> 64))) << 64 | static_cast<uint64_t>(a);
@@ -2482,48 +2508,6 @@ float128_t f128_max(float128_t a, float128_t b) {
 }
 
 std::string coverfloat_runtestvector(const std::string &input, bool suppress_error_check) {
-
-#if 0
-    char op_str[MAX_TOKEN_LEN + 1]; // plus one for space for null terminator
-    char rm_str[MAX_TOKEN_LEN + 1];
-    char a_str[MAX_TOKEN_LEN + 1];
-    char b_str[MAX_TOKEN_LEN + 1];
-    char c_str[MAX_TOKEN_LEN + 1];
-    char opFmt_str[MAX_TOKEN_LEN + 1];
-    char res_str[MAX_TOKEN_LEN + 1];
-    char resFmt_str[MAX_TOKEN_LEN + 1];
-    char flags_str[MAX_TOKEN_LEN + 1];
-
-    if (sscanf(
-            input,
-            "%48[^_]_%48[^_]_%48[^_]_%48[^_]_%48[^_]_%48[^_]_%48[^_]_%48[^_]_%48[^_ \t\r\n]",
-            op_str,
-            rm_str,
-            a_str,
-            b_str,
-            c_str,
-            opFmt_str,
-            res_str,
-            resFmt_str,
-            flags_str
-        ) != 9) {
-        snprintf(output, output_size, "Error: malformed testvector: %s\n", input);
-
-        return EXIT_FAILURE;
-    }
-
-    // unpack test vector tokens into integers to pass to the reference model
-
-    uint32_t op = parse_hex_128(op_str).lower;
-    uint8_t rm = parse_hex_128(rm_str).lower;
-    uint128_t a = parse_hex_128(a_str);
-    uint128_t b = parse_hex_128(b_str);
-    uint128_t c = parse_hex_128(c_str);
-    uint8_t opFmt = parse_hex_128(opFmt_str).lower;
-    uint8_t resFmt = parse_hex_128(resFmt_str).lower;
-    uint128_t res = parse_hex_128(res_str);
-    uint8_t flags = parse_hex_128(flags_str).lower;
-#else
     std::stringstream ss(input);
     ss >> std::hex;
 
@@ -2556,7 +2540,6 @@ std::string coverfloat_runtestvector(const std::string &input, bool suppress_err
     uint8_t rm = static_cast<uint8_t>(rm16);
     uint8_t opFmt = static_cast<uint8_t>(opFmt16);
     uint8_t resFmt = static_cast<uint8_t>(resFmt16);
-#endif
 
     mp::uint128_t newRes;
     uint8_t newFlags;
